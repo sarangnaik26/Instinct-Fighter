@@ -12,12 +12,24 @@ import CountdownOverlay from '../../components/CountdownOverlay'
 import MuteButton from '../../components/MuteButton'
 import { motion } from 'framer-motion'
 
-const GRAVITY = 0.12
-const FLAP_FORCE = -5.8
+const GRAVITY = 0.20
+const FLAP_FORCE = -4.6
 const PIPE_W = 55
-const GAP = 160
-const PIPE_SPEED_INIT = 2.2
+const GAP = 150
+const PIPE_SPEED_INIT = 2.4
 const BIRD_X = 80
+
+const spritePaths = {
+  bird: import.meta.env.BASE_URL + 'assets/sprites/Blue Bird Front.png',
+  wood: import.meta.env.BASE_URL + 'assets/sprites/Wood.png',
+  bg: import.meta.env.BASE_URL + 'assets/sprites/background.png',
+}
+const sprites = {}
+Object.keys(spritePaths).forEach(key => {
+  const img = new Image()
+  img.src = spritePaths[key]
+  sprites[key] = img
+})
 
 export default function GravityFool() {
   const { mode } = useParams()
@@ -98,9 +110,18 @@ export default function GravityFool() {
         const grav = inv ? -GRAVITY : GRAVITY
 
         s.bird.vy += grav
-        s.bird.vy = Math.max(-10, Math.min(10, s.bird.vy))
+        s.bird.vy = Math.max(-8, Math.min(6.5, s.bird.vy))
         s.bird.y += s.bird.vy
-        s.bird.angle = Math.max(-30, Math.min(85, s.bird.vy * 5))
+        
+        const absVy = inv ? -s.bird.vy : s.bird.vy
+        if (absVy < -0.5) {
+          s.bird.angle = inv ? 25 : -25
+        } else if (absVy < 3.5) {
+          s.bird.angle += inv ? -1.5 : 1.5
+        } else {
+          s.bird.angle += inv ? -6 : 6
+        }
+        s.bird.angle = Math.max(-90, Math.min(90, s.bird.angle))
 
         s.frameCount++
         if (s.frameCount % 140 === 0) {
@@ -131,45 +152,56 @@ export default function GravityFool() {
 
       // ---- DRAW ----
       ctx.clearRect(0, 0, W, H)
-
       const inv = invertedRef.current
-      const sky = ctx.createLinearGradient(0, 0, 0, H)
-      sky.addColorStop(0, inv ? '#1a1a3e' : '#87CEEB')
-      sky.addColorStop(1, inv ? '#0a0a1e' : '#d0eeff')
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H)
+      ctx.filter = inv ? 'hue-rotate(180deg) invert(80%)' : 'none'
 
-      // Clouds
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'
-      ;[[60,55,s.frameCount*0.25],[200,35,s.frameCount*0.3],[360,65,s.frameCount*0.2]].forEach(([bx,by,off]) => {
-        const cx = ((bx + off) % (W + 80)) - 40
-        ctx.beginPath(); ctx.arc(cx, by, 24, 0, Math.PI*2); ctx.fill()
-        ctx.beginPath(); ctx.arc(cx+28, by-8, 18, 0, Math.PI*2); ctx.fill()
-        ctx.beginPath(); ctx.arc(cx-20, by+4, 14, 0, Math.PI*2); ctx.fill()
-      })
+      // Parallax Background
+      if (sprites.bg.complete && sprites.bg.naturalHeight !== 0) {
+        const bgRatio = sprites.bg.width / sprites.bg.height
+        const bgW = H * bgRatio
+        const shiftX = (s.frameCount * 0.5) % bgW
+        
+        // Draw enough tiles to safely cover any ultra-wide screen
+        const tilesNeeded = Math.ceil(W / bgW) + 1
+        for (let i = 0; i < tilesNeeded; i++) {
+          ctx.drawImage(sprites.bg, Math.floor(-shiftX + (i * bgW)), 0, Math.ceil(bgW) + 1, H)
+        }
+      } else {
+        ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, W, H)
+      }
 
       // Pipes
       s.pipes.forEach(p => {
-        const pColor = inv ? '#6b2510' : '#2d9950'
-        const capColor = inv ? '#9b3a18' : '#1f7a38'
+        const woodReady = sprites.wood.complete && sprites.wood.naturalHeight !== 0
 
         // Top pipe
-        ctx.fillStyle = pColor
-        ctx.beginPath(); ctx.roundRect(p.x, 0, PIPE_W, p.topH - 12, [0,0,4,4]); ctx.fill()
-        ctx.fillStyle = capColor
-        ctx.beginPath(); ctx.roundRect(p.x - 6, p.topH - 22, PIPE_W + 12, 22, 6); ctx.fill()
-        ctx.strokeStyle = '#00000066'; ctx.lineWidth = 3
-        ctx.beginPath(); ctx.roundRect(p.x, 0, PIPE_W, p.topH - 12, [0,0,4,4]); ctx.stroke()
-        ctx.beginPath(); ctx.roundRect(p.x - 6, p.topH - 22, PIPE_W + 12, 22, 6); ctx.stroke()
+        if (woodReady) {
+          ctx.drawImage(sprites.wood, p.x, 0, PIPE_W, p.topH - 12)
+          ctx.drawImage(sprites.wood, p.x - 6, p.topH - 22, PIPE_W + 12, 22)
+        } else {
+          ctx.fillStyle = '#2d9950'
+          ctx.beginPath(); ctx.roundRect(p.x, 0, PIPE_W, p.topH - 12, [0,0,4,4]); ctx.fill()
+          ctx.fillStyle = '#1f7a38'
+          ctx.beginPath(); ctx.roundRect(p.x - 6, p.topH - 22, PIPE_W + 12, 22, 6); ctx.fill()
+          ctx.strokeStyle = '#00000066'; ctx.lineWidth = 3
+          ctx.beginPath(); ctx.roundRect(p.x, 0, PIPE_W, p.topH - 12, [0,0,4,4]); ctx.stroke()
+          ctx.beginPath(); ctx.roundRect(p.x - 6, p.topH - 22, PIPE_W + 12, 22, 6); ctx.stroke()
+        }
 
         // Bottom pipe
         const botY = p.topH + GAP
-        ctx.fillStyle = pColor
-        ctx.beginPath(); ctx.roundRect(p.x, botY + 12, PIPE_W, H - botY, [4,4,0,0]); ctx.fill()
-        ctx.fillStyle = capColor
-        ctx.beginPath(); ctx.roundRect(p.x - 6, botY, PIPE_W + 12, 22, 6); ctx.fill()
-        ctx.strokeStyle = '#00000066'; ctx.lineWidth = 3
-        ctx.beginPath(); ctx.roundRect(p.x, botY + 12, PIPE_W, H - botY, [4,4,0,0]); ctx.stroke()
-        ctx.beginPath(); ctx.roundRect(p.x - 6, botY, PIPE_W + 12, 22, 6); ctx.stroke()
+        if (woodReady) {
+          ctx.drawImage(sprites.wood, p.x, botY + 12, PIPE_W, H - botY)
+          ctx.drawImage(sprites.wood, p.x - 6, botY, PIPE_W + 12, 22)
+        } else {
+          ctx.fillStyle = '#2d9950'
+          ctx.beginPath(); ctx.roundRect(p.x, botY + 12, PIPE_W, H - botY, [4,4,0,0]); ctx.fill()
+          ctx.fillStyle = '#1f7a38'
+          ctx.beginPath(); ctx.roundRect(p.x - 6, botY, PIPE_W + 12, 22, 6); ctx.fill()
+          ctx.strokeStyle = '#00000066'; ctx.lineWidth = 3
+          ctx.beginPath(); ctx.roundRect(p.x, botY + 12, PIPE_W, H - botY, [4,4,0,0]); ctx.stroke()
+          ctx.beginPath(); ctx.roundRect(p.x - 6, botY, PIPE_W + 12, 22, 6); ctx.stroke()
+        }
       })
 
       // Ground
@@ -177,24 +209,46 @@ export default function GravityFool() {
       ctx.fillStyle = '#6B8E23'; ctx.fillRect(0, H - 26, W, 8)
       ctx.strokeStyle = '#00000066'; ctx.lineWidth = 2; ctx.strokeRect(0, H - 26, W, 26)
 
+      // Ceiling (Top Ground)
+      ctx.fillStyle = '#8B6914'; ctx.fillRect(0, 0, W, 22)
+      ctx.fillStyle = '#6B8E23'; ctx.fillRect(0, 18, W, 8)
+      ctx.strokeStyle = '#00000066'; ctx.lineWidth = 2; ctx.strokeRect(0, 0, W, 26)
+
       // Bird
       ctx.save()
       ctx.translate(BIRD_X, s.bird.y)
       ctx.rotate((s.bird.angle * Math.PI) / 180)
-      const wingBob = Math.sin(s.frameCount * 0.35) > 0
-      ctx.fillStyle = inv ? '#FF6B6B' : '#FFE66D'
-      ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.ellipse(0, 0, 17, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = inv ? '#FF4444' : '#FFC200'
-      ctx.beginPath(); ctx.ellipse(-3, wingBob ? 5 : 2, 10, 5, wingBob ? -0.5 : 0.1, 0, Math.PI * 2)
-      ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(7, -4, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(8, -4, 3, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(9, -5, 1, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#FF8C00'
-      ctx.beginPath(); ctx.moveTo(14,-1); ctx.lineTo(21,2); ctx.lineTo(14,5); ctx.closePath()
-      ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke()
+      
+      const birdSize = 38
+      if (sprites.bird.complete && sprites.bird.naturalHeight !== 0) {
+        const numFrames = Math.max(1, Math.round(sprites.bird.width / Math.max(1, sprites.bird.height)))
+        const frameW = sprites.bird.width / numFrames
+        
+        let curFrame = 0
+        const absVy = inv ? -s.bird.vy : s.bird.vy
+        if (absVy < 3.5) {
+          curFrame = Math.floor(s.frameCount / 6) % numFrames
+        }
+
+        ctx.drawImage(sprites.bird, curFrame * frameW, 0, frameW, sprites.bird.height, -birdSize / 2, -birdSize / 2, birdSize, birdSize)
+      } else {
+        const wingBob = Math.sin(s.frameCount * 0.35) > 0
+        ctx.fillStyle = '#FFE66D'
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5
+        ctx.beginPath(); ctx.ellipse(0, 0, 17, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#FFC200'
+        ctx.beginPath(); ctx.ellipse(-3, wingBob ? 5 : 2, 10, 5, wingBob ? -0.5 : 0.1, 0, Math.PI * 2)
+        ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(7, -4, 5, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(8, -4, 3, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(9, -5, 1, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#FF8C00'
+        ctx.beginPath(); ctx.moveTo(14,-1); ctx.lineTo(21,2); ctx.lineTo(14,5); ctx.closePath()
+        ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke()
+      }
       ctx.restore()
+
+      ctx.filter = 'none'
 
       // Waiting overlay
       if (phase === 'waiting') {
